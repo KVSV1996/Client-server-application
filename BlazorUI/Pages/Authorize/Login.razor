@@ -1,0 +1,50 @@
+﻿@page "/login"
+@using System.Net.Http.Json
+@using BlazorUI.Authorize;
+@inject NavigationManager NavigationManager
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ITokenService TokenService
+
+
+
+<h3 class ="centered-title">Login</h3>
+<div class="d-flex justify-content-center">
+    <div class="login-container">
+        <div class="form-group">
+            <label for="username">Username:</label>
+            <input type="text" class="form-control" id="username" @bind="Username" />
+        </div>
+        <div class="form-group">
+            <label for="password">Password:</label>
+            <input type="password" class="form-control" id="password" @bind="Password" />
+        </div>
+        <button type="submit" class="btn btn-primary" @onclick="Auth">Login</button>
+    </div>
+</div>
+
+@code {
+    private string Username { get; set; }
+    private string Password { get; set; }
+
+    public async Task Auth()
+    {
+        if (string.IsNullOrEmpty(Username) || string.IsNullOrEmpty(Password))
+        {
+            await JSRuntime.InvokeAsync<bool>("confirm", $"Login or password cannot be empty");
+            return;
+        }
+
+        var token = await AuthService.LoginAsync(Username, Password);
+        if (token != null)
+        {
+            TokenService.SetToken(token);
+            NavigationManager.NavigateTo("/financial-report");
+        }
+        else
+        {
+            await JSRuntime.InvokeAsync<bool>("confirm", $"Login or password is incorrect");
+        }
+    }
+}

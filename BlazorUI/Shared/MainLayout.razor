@@ -1,0 +1,26 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+
+<PageTitle>BlazorUI</PageTitle>
+
+<div class="page">
+    <main>
+        <div class="top-row px-4">
+            @if (!NavigationManager.Uri.EndsWith("/login"))
+            {
+                <button class="btn btn-primary" @onclick="LogOut">Log Out</button>
+            }
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>
+
+@code{
+    private void LogOut()
+    {
+        NavigationManager.NavigateTo("/login");
+    }
+}

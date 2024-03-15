@@ -1,0 +1,72 @@
+﻿@page "/create-transaction"
+@using BlazorUI.Data
+@using BlazorUI.Service
+@using BlazorUI.Authorize
+@using System.Net
+@inject IJSRuntime JSRuntime
+@inject ITransactionService TransactionService
+@inject NavigationManager NavigationManager
+@inject ITokenService TokenService
+
+<h3 class="centered-title">Create New Transaction</h3>
+
+<EditForm Model="newTransaction" OnValidSubmit="HandleValidSubmit">
+    <DataAnnotationsValidator />
+    <ValidationSummary />
+
+    <div class="form-group">
+        <label for="type">Type</label>
+        <InputSelect id="type" @bind-Value="newTransaction.Type" class="form-control">
+            <option value="Income">Income</option>
+            <option value="Expense">Expense</option>
+        </InputSelect>
+    </div>
+
+    <div class="form-group">
+        <label for="value">Value</label>
+        <InputNumber id="value" @bind-Value="newTransaction.Value" class="form-control" />
+    </div>
+
+    <div class="form-group">
+        <label for="date">Date</label>
+        <InputDate id="date" @bind-Value="newTransaction.Date" class="form-control" />
+    </div>
+
+    <button type="submit" class="btn btn-primary">Create Transaction</button>
+</EditForm>
+
+@code {
+    private Transaction newTransaction = new Transaction { Date = DateOnly.FromDateTime(DateTime.Today) };
+
+    private async Task HandleValidSubmit()
+    {
+        var token = TokenService.Token;
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                var success = await TransactionService.CreateTransactionAsync(newTransaction, token);
+                if (success)
+                {
+                    NavigationManager.NavigateTo("/financial-report");
+                }
+                else
+                {
+                    await JSRuntime.InvokeVoidAsync("alert", "An error occurred while creating the transaction.");
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+}

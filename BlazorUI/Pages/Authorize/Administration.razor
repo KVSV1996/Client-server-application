@@ -1,0 +1,277 @@
+﻿@page "/allusers"
+@using BlazorUI.Authorize
+@using BlazorUI.Data
+@using System.Net.Http.Headers
+@using System.Net
+@inject ITokenService TokenService
+@inject IAuthService AuthService
+@inject IJSRuntime JSRuntime
+@inject HttpClient HttpClient
+@inject NavigationManager NavigationManager
+
+
+<h3>All Users</h3>
+
+@if (users == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Role</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var user in users)
+            {
+                <tr>
+                    <td>
+                        @if (editingUser == null || editingUser.Username != user.Username)
+                        {
+                            @user.Username
+                        }
+                        else
+                        {
+                            <div style="padding-top: 30px;">@user.Username</div>
+                        }
+                    </td>
+                    <td>
+                        @if (editingUser == null || editingUser.Username != user.Username)
+                        {
+                            @user.Role.ToString()
+                        }
+                        else
+                        {
+                            <InputSelect @bind-Value="editingUser.Role" class="form-control" style="margin-top: 25px;">
+                                @foreach (var role in Enum.GetValues<UserRole>())
+                                {
+                                    <option value="@role">@role.ToString()</option>
+                                }
+                            </InputSelect>
+                        }
+                    </td>
+                    <td>
+                        @if (editingUser != null && editingUser.Username == user.Username)
+                        {
+                            <div>
+                                <div style="color: red;">If you do not need to change password, leave the field blank.</div>
+                                <div class="user-edit-form">
+                                    <input type="password" @bind="newPassword" class="form-control" placeholder="New password" />
+                                    <button class="btn btn-success" @onclick="() => SaveChanges(user)">Save</button>
+                                    <button class="btn btn-secondary" @onclick="CancelEdit">Cancel</button>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <button class="btn btn-info" @onclick="() => EditUser(user)">Edit</button>
+                            <button class="btn btn-danger" @onclick="() => DeleteUser(user)">Delete</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <button class="btn btn-success" @onclick="ToggleCreateUserForm">Create New User</button>
+
+    @if (showCreateUserForm)
+    {
+        <div class="create-user-form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="newUsername">Username:</label>
+                    <input type="text" class="form-control" id="newUsername" @bind="newUser.Username">
+                </div>
+                <div class="form-group">
+                    <label for="newRole">Role:</label>
+                    <InputSelect id="newRole" @bind-Value="newUser.Role" class="form-control">
+                        @foreach (var role in Enum.GetValues<UserRole>())
+                        {
+                            <option value="@role">@role</option>
+                        }
+                    </InputSelect>
+                </div>
+                <div class="form-group">
+                    <label for="newPassword">Password:</label>
+                    <input type="password" class="form-control" id="newPassword" @bind="newUser.Password">
+                </div> 
+                <div class="form-group">
+                    <button class="btn btn-primary" @onclick="CreateUser">Save</button>
+                    <button class="btn btn-secondary" @onclick="CancelCreateUser">Cancel</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<UserInfo> users;
+    private bool showCreateUserForm = false;
+    private UserInfo newUser = new UserInfo();
+    private UserInfo? editingUser;
+    private string newPassword;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var token = TokenService.Token;
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                users = await AuthService.GetAllUsersAsync(token);
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch 
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+
+    private async Task DeleteUser(UserInfo user)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete this user?");
+
+        var token = TokenService.Token;
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                if (confirmed)
+                {
+                    var success = await AuthService.DeleteUserAsync(user.Username, token);
+                    if (success)
+                    {
+                        users.Remove(user);
+                    }
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+
+    private void ToggleCreateUserForm()
+    {
+        showCreateUserForm = !showCreateUserForm;
+    }
+
+    private void EditUser(UserInfo user)
+    {
+        editingUser = new UserInfo
+            {
+                Username = user.Username,
+                Role = user.Role
+            };
+        newPassword = "";
+    }
+
+    private void CancelCreateUser()
+    {
+        newUser = new UserInfo();
+        showCreateUserForm = false;
+    }
+
+    private void CancelEdit()
+    {
+        editingUser = null;
+        newPassword = "";
+    }
+
+    private async Task CreateUser()
+    {
+        var token = TokenService.Token;
+
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                await AuthService.CreateUserAsync(newUser, token);
+                newUser = new UserInfo();
+                showCreateUserForm = false;
+                users = await AuthService.GetAllUsersAsync(token);
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Conflict)
+        {
+            await JSRuntime.InvokeAsync<bool>("confirm", $"User with this username already exists.");
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+
+    private async Task SaveChanges(UserInfo user)
+    {
+        if (!string.IsNullOrEmpty(newPassword) || editingUser.Role != user.Role)
+        {
+            user.Password = newPassword;
+            user.Role = editingUser.Role;
+
+            var token = TokenService.Token;
+
+            try
+            {
+                if (!string.IsNullOrEmpty(token))
+                {
+                    var success = await AuthService.UpdateUserAsync(user, token);
+                    if (success)
+                    {
+                        var index = users.FindIndex(u => u.Username == user.Username);
+                        if (index != -1)
+                        {
+                            users[index] = user;
+                        }
+                    }
+                }
+                else
+                {
+                    NavigationManager.NavigateTo("/login");
+                }
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+            catch
+            {
+                NavigationManager.NavigateTo("/error");
+            }
+
+            editingUser = null;
+            newPassword = "";
+        }
+    }
+}

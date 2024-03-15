@@ -1,0 +1,222 @@
+﻿@page "/financial-report"
+@using BlazorUI.Data
+@using BlazorUI.Service
+@using BlazorUI.Authorize
+@using System.Net
+@inject IJSRuntime JSRuntime
+@inject HttpClient Http
+@inject IAccountingService AccountingService
+@inject ITransactionService TransactionService
+@inject NavigationManager NavigationManager
+@inject ITokenService TokenService
+
+<h3 class="centered-title">Financial Reports</h3>
+<div>
+    <label for="startDate">Start Date:</label>
+    <input type="date" id="startDate" @bind="startDate" />
+
+    <label for="endDate">End Date:</label>
+    <input type="date" id="endDate" @bind="endDate" />
+
+    <button class="btn btn-primary" @onclick="LoadReport">Load Report</button>
+    <button class="btn btn-secondary margin-right" @onclick="CreateReport">Create Report</button>
+    @if (TokenService.Role == 1)
+    {
+        <button class="btn btn-secondary" @onclick="AdministrationUsers">Administration</button>
+    }
+    else
+    {
+        <span class="btn btn-secondary invisible">Administration</span> 
+    }
+</div>
+
+
+
+@if (report == null)
+{
+    <p><em> Choose dates and click 'Load Report' to display the financial report.</em></p>
+}
+else
+{
+    <div>
+        <p>Total Income: @report.TotalIncome  Total Expense: @report.TotalExpense</p>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Type</th>
+                    <th>Value</th>
+                    <th>Actions</th> 
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var transaction in report.Transactions)
+                {
+                    <tr>
+                        <td>
+                            @if (editableTransaction == transaction)
+                            {
+                                <InputDate @bind-Value="transaction.Date" class="form-control" />
+                            }
+                            else
+                            {
+                                @transaction.Date
+                            }
+                        </td>
+                        <td>
+                            @if (editableTransaction == transaction)
+                            {
+                                <InputSelect @bind-Value="transaction.Type" class="form-control">
+                                    <option value="Income">Income</option>
+                                    <option value="Expense">Expense</option>
+                                </InputSelect>
+                            }
+                            else
+                            {
+                                @transaction.Type.ToString()
+                            }
+                        </td>
+                        <td>
+                            @if (editableTransaction == transaction)
+                            {
+                                <InputNumber @bind-Value="transaction.Value" class="form-control" />
+                            }
+                            else
+                            {
+                                @transaction.Value
+                            }
+                        </td>
+                        <td>
+                            @if (editableTransaction == transaction)
+                            {
+                                <button class="btn btn-success" @onclick="() => UpdateTransaction(transaction)">Save</button>
+                                <button class="btn btn-secondary" @onclick="() => CancelEdit()">Cancel</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-primary" @onclick="() => EditTransaction(transaction)">Edit</button>
+                                <button class="btn btn-primary" @onclick="() => DeleteTransaction(transaction)">Delete</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+
+@code {
+    private FinancialReport? report;
+    private DateOnly startDate = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly endDate = DateOnly.FromDateTime(DateTime.Today);
+    private Transaction? editableTransaction;
+
+    private async Task LoadReport()
+    {
+        var token = TokenService.Token;
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                report = await AccountingService.GetTransactionsForPeriodAsync(startDate, endDate, token);
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+
+    private void EditTransaction(Transaction transaction)
+    {
+        editableTransaction = transaction;
+    }
+
+    private async Task DeleteTransaction(Transaction transaction)
+    {
+        var confirmed = await JSRuntime.InvokeAsync<bool>("confirm", $"Are you sure you want to delete this transaction?");
+
+        var token = TokenService.Token;
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                if (confirmed)
+                {
+                    await TransactionService.DeleteTransactionAsync(transaction.Id, token);
+                    await LoadReport();
+                }
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+
+    private void CreateReport()
+    {
+        NavigationManager.NavigateTo("/create-transaction");
+    }
+
+    private async Task UpdateTransaction(Transaction transaction)
+    {
+        var token = TokenService.Token;
+        if (transaction.Value <= 0 )
+        {
+            await JSRuntime.InvokeAsync<bool>("confirm", $"Value cannot be less than zero");
+            return;
+        }
+
+        try
+        {
+            if (!string.IsNullOrEmpty(token))
+            {
+                await TransactionService.UpdateTransactionAsync(transaction, token);
+                editableTransaction = null;
+                await LoadReport();
+            }
+            else
+            {
+                NavigationManager.NavigateTo("/login");
+            }
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
+        {
+            NavigationManager.NavigateTo("/login");
+        }
+        catch
+        {
+            NavigationManager.NavigateTo("/error");
+        }
+    }
+
+    private void AdministrationUsers()
+    {
+        NavigationManager.NavigateTo("/allusers");
+    }
+
+    private async  void CancelEdit()
+    {
+        editableTransaction = null;
+        await LoadReport();
+        StateHasChanged();
+    }
+}
